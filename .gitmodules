@@ -1,3 +1,4 @@
 [submodule "asp_decider/TSL"]
 	path = asp_decider/TSL
 	url = git@github.com:Autonomous-Driving-Safety-Project/TSL.git
+	branch = highway-decider
