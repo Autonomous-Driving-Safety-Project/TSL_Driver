@@ -6,6 +6,7 @@ from planner.pure_persuit import pure_persuit
 from forecast_model.forecast import Model
 from asp_decider.asp_plan import asp_plan
 from asp_decider.asp_utils import neighbour_vehicle_to_asp
+from highway_env.road.road import Road
 
 env = gym.make('highway-v0', render_mode='rgb_array')
 env.config["offscreen_rendering"] = False
@@ -17,7 +18,7 @@ env.reset()
 env.render()
 
 goal = """#program final.
-:- is_ego(E), is_vehicle(V), E != V, not ahead(E,V).
+:- is_ego(E), is_vehicle(V), E != V, ahead(V,E).
 """
 
 def model_check(road, ego, model):
@@ -37,11 +38,12 @@ def model_check(road, ego, model):
 def plan_with_model(road, ego, model):
     follow_vehs, overtake_vehs, cover_vehs, s_bound, l_bound = model.get_sample_area(1, road, ego)
                 
-    if s_bound[1] - s_bound[0] < 1.0 or l_bound[1] - l_bound[0] < 0.5:
+    # if s_bound[1] - s_bound[0] < 1.0 or l_bound[1] - l_bound[0] < 0.5:
+    if l_bound[1] - l_bound[0] < 0.5:
         print("Invalid sample area.")
         return None
     else:
-        traj = lattice_plan(road, ego, 30.0, sample_s_points=np.linspace(s_bound[0], s_bound[1], 7), sample_l_points=(np.linspace(l_bound[0], l_bound[1], 6) + [0.0] if l_bound[0]*l_bound[1]<0 else np.linspace(l_bound[0], l_bound[1], 7)), follow_obstacles=follow_vehs, overtake_obstacles=overtake_vehs, cover_obstacles=cover_vehs)
+        traj = lattice_plan(road, ego, 30.0, sample_l_points=(np.linspace(l_bound[0], l_bound[1], 2) + [0.0] if l_bound[0]*l_bound[1]<0 else np.linspace(l_bound[0], l_bound[1], 3)), follow_obstacles=follow_vehs, overtake_obstacles=overtake_vehs, cover_obstacles=cover_vehs)
         
         if traj is None:
             return None
@@ -59,8 +61,9 @@ def plan_without_model(road, ego):
 
 exec_model = None
 
-for i in range(1000):
+while True:
     print("----------------------------------------------")
+    road:Road = None
     road, ego = env.unwrapped.get_ground_truth()
     action = None
     # models = []
@@ -69,7 +72,7 @@ for i in range(1000):
             
                 models = asp_plan(road, ego, goal)
                 if len(models) == 0:
-                    raise RuntimeWarning("No plan found.")
+                    raise RuntimeError("No plan found.")
                 models = [Model(model, road, ego) for model in models]
                 print(len(models))
                 models.sort(key=lambda x: x.get_prob(), reverse=True)
@@ -121,6 +124,12 @@ for i in range(1000):
     #     acc, steer = pure_persuit(traj, ego)
     #     action = np.array([acc / 5.0, steer / 0.7853981633974483])
     #     obs, reward, done, truncated, info = env.step(action)
+    except RuntimeError:
+        print("Unsatisfiable. Image dumped.")
+        for v in road.vehicles:
+            print(f"{id(v) % 1000}: {v.position}, {v.speed}")
+        plt.imsave("error.png", env.render())
+        break
     obs, reward, done, truncated, info = env.step(action)
     env.render()
     

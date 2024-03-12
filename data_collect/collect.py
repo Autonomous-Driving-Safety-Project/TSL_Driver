@@ -41,7 +41,7 @@ class Relation():
         return self.longitudinal != __value.longitudinal or self.lateral != __value.lateral
     
     def __repr__(self) -> str:
-        return f"({Relation.LON_NAME[self.longitudinal]}, {Relation.LAT_NAME[self.lateral]})"
+        return f"({Relation.LON_NAME.get(self.longitudinal, None)}, {Relation.LAT_NAME.get(self.lateral,None)})"
 
 def _get_lon_relation(veh, ego) -> int:
     dist = veh.lane_distance_to(ego, veh.lane)

@@ -1,27 +1,32 @@
 import numpy as np
 import sparse
 import os
+import re
 from highway_env.vehicle.kinematics import Vehicle
 from highway_env.road.lane import AbstractLane
 from highway_env.road.road import Road
-from data_collect.collect import Relation, get_relationship, get_surround_vehicles
-from planner.lattice_planner import cartesian_to_frenet_l1, get_refline, refline_project, get_state
+from data_collect.collect import Relation, get_relationship, get_surround_vehicles as get_surround_6
+from planner.lattice_planner import cartesian_to_frenet_l1, get_refline, refline_project, get_state, get_surround_vehicles
 from asp_decider.asp_utils import neighbour_vehicle_to_asp, road_network_to_asp, asp2str, get_asp_vehicle_repr
-
 
 forecast_model = sparse.load_npz(os.path.join(os.path.dirname(__file__), "stat2.npz"))
 
+def tsl_lane_repr_to_index(lane_repr: str):
+    matches = re.match(r'f(\d+)t(\d+)l(\d+)', lane_repr)
+    return tuple(map(int, matches.groups()))
+
 class Model():
-    def __init__(self, model, road, ego):
+    def __init__(self, model, road:Road, ego:Vehicle):
         self.model = model
         self.prob = 1.0
         self.veh_dict = {}
         self.lat_relations = [None]
         self.lon_relations = [None]
+        self.target_lane_index = [ego.lane_index]
         
         states = {}
         init_relations = {}
-        vehs = get_surround_vehicles(road, ego)
+        vehs = list(get_surround_vehicles(road, ego))
         for veh in vehs:
             if veh is None:
                 continue
@@ -48,9 +53,12 @@ class Model():
                         lat_relations[atom.arguments[0].name] = Relation.RIGHT
                     elif atom.name == "same_lane_relation":
                         lat_relations[atom.arguments[0].name] = Relation.SAME_LANE
+                    elif atom.name == "ego_on_lane":
+                        target_lane_index = tsl_lane_repr_to_index(atom.arguments[0].name)
             
             self.lat_relations.append(lat_relations)
             self.lon_relations.append(lon_relations)
+            self.target_lane_index.append(target_lane_index)
             
             probs = np.empty((len(states), forecast_model.shape[-3]))
             for i,veh in enumerate(states.keys()):
@@ -61,9 +69,7 @@ class Model():
                 final_relation = Relation(final_lon_relation, final_lat_relation)
                 # print(*state, init_relation, int(final_relation))
                 v = forecast_model[state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11], :, init_relation, int(final_relation)].todense()
-                v[v==0]=1
                 sum_v = forecast_model[state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11], :, init_relation, :].todense()
-                sum_v[sum_v==0]=1
                 sum_v = sum_v.sum(axis=1).astype(np.float64)
                 sum_v += 1e-6
                 probs[i,:] = v/sum_v
@@ -73,7 +79,7 @@ class Model():
     def get_prob(self):
         return self.prob
     
-    def get_sample_area(self, i, road, ego):
+    def get_sample_area(self, i, road:Road, ego:Vehicle):
         if i < 1 or i > len(self.lat_relations):
             raise ValueError("logical state index out of bound.")
         max_l = [6.0]
@@ -86,7 +92,7 @@ class Model():
         
         # print(self.lat_relations[i])
         # print(self.lon_relations[i])
-        print({k: Relation(self.lon_relations[i][k], self.lat_relations[i][k]) for k, v in self.lat_relations[i].items()})
+        print({k: Relation(self.lon_relations[i][k], self.lat_relations[i].get(k, None)) for k, v in self.lon_relations[i].items()})
         
         refline = get_refline(ego, ego.lane)
         
@@ -113,16 +119,17 @@ class Model():
                 # min_s.append(s - veh.LENGTH)
                 # max_s.append(s + veh.LENGTH)
                 cover_vehs.append(veh)
+        l_offset = (self.target_lane_index[i][2] - ego.lane_index[2]) * 4.0
         # print("l bounds: ", (max(min_l), min(max_l)))
         # print("s bounds: ", (max(min_s), min(max_s)))
         # print("follow: ", follow_vehs)
         # print("overtake: ", overtake_vehs)
         # print("cover: ", cover_vehs)
-        return follow_vehs, overtake_vehs, cover_vehs, (max(min_s), min(max_s)), (max(min_l), min(max_l))
+        return follow_vehs, overtake_vehs, cover_vehs, (max(min_s), min(max_s)), (l_offset-0.5, l_offset+0.5)
         
 
 def get_index(road, ego, veh):
-    veh_surrounds = get_surround_vehicles(road, veh)
+    veh_surrounds = get_surround_6(road, veh)
     relation_with_ego = get_relationship(veh, ego)
     
     relate_speed_bins = [-5, 0, 5, 10, np.nan]

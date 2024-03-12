@@ -1,5 +1,6 @@
 from highway_env.road.road import RoadNetwork
-from clingo import Function, Symbol
+from highway_env.vehicle.kinematics import Vehicle
+from clingo import Function, Symbol, Number
 from typing import List
 
 def get_asp_lane_repr(from_: str, to_: str, id: int):
@@ -27,15 +28,15 @@ def road_network_to_asp(network: RoadNetwork) -> List[Symbol]:
         # result += f"is_lane({get_asp_lane_repr(*index)}).\n"
         result.append(Function("is_lane", [Function(get_asp_lane_repr(*index))]))
         # result += f"has_lane({get_asp_road_repr(index[0], index[1])},{get_asp_lane_repr(*index)}).\n"
-        result.append(Function("has_lane", [Function(get_asp_road_repr(index[0], index[1])), Function(get_asp_lane_repr(*index))]))
+        # result.append(Function("has_lane", [Function(get_asp_road_repr(index[0], index[1])), Function(get_asp_lane_repr(*index))]))
         roads.add((index[0], index[1]))
         id_ = index[2]
         if id_ > 0:
             # result += f"left({get_asp_lane_repr(index[0], index[1], id_-1)},{get_asp_lane_repr(*index)}).\n"
             result.append(Function("left", [Function(get_asp_lane_repr(index[0], index[1], id_-1)), Function(get_asp_lane_repr(*index))]))
-    for road in roads:
-        # result += f"is_road({get_asp_road_repr(*road)}).\n"
-        result.append(Function("is_road", [Function(get_asp_road_repr(*road))]))
+    # for road in roads:
+    #     # result += f"is_road({get_asp_road_repr(*road)}).\n"
+    #     result.append(Function("is_road", [Function(get_asp_road_repr(*road))]))
     return result
 
 def get_asp_vehicle_repr(vehicle):
@@ -82,7 +83,53 @@ def neighbour_vehicle_to_asp(road, ego):
     vehicles = list(vehicles)
     for i in range(len(vehicles) - 1):
         for j in range(i+1, len(vehicles)):
-            initial.append(get_lon_relation(vehicles[i], vehicles[j]))
+            # initial.append(get_lon_relation(vehicles[i], vehicles[j]))
+            initial.append(get_distance(vehicles[i], vehicles[j], ego))
     for vehicle in vehicles:
         initial.append(Function("on_lane", [Function(get_asp_vehicle_repr(vehicle)), Function(get_asp_lane_repr(*vehicle.lane_index))]))
     return always, initial
+
+def rss_safe_distance(veh:Vehicle, veh_f:Vehicle):
+    RHO = 0.1
+    A_MAX_BRAKE = 5.0
+    A_MIN_BRAKE = 5.0
+    A_MAX_ACCEL = 5.0
+    vr = veh.speed
+    vf = veh_f.speed
+    return max(0, vr * RHO + 0.5 * A_MAX_ACCEL * RHO ** 2 + (vr + RHO * A_MAX_ACCEL) ** 2 / (2 * A_MIN_BRAKE) - vf ** 2 / (2 * A_MAX_BRAKE))
+
+def get_distance(v1:Vehicle, v2:Vehicle, ego:Vehicle):
+    if v1.position[0] >= v2.position[0]:
+        # v1在v2前面
+        dis_asp = None
+        dis = v1.position[0] - v2.position[0]
+        vr_sd = rss_safe_distance(v2, ego)
+        ego_sd = rss_safe_distance(ego, v1 )
+        if dis < v1.LENGTH:
+            dis_asp = 0
+        elif dis <  v1.LENGTH + ego.LENGTH:
+            dis_asp = 1
+        elif dis < v1.LENGTH + ego.LENGTH + vr_sd:
+            dis_asp = 2
+        elif dis < v1.LENGTH + ego.LENGTH + vr_sd + ego_sd:
+            dis_asp = 3
+        else:
+            dis_asp = 4
+        return Function("distance", [Function(get_asp_vehicle_repr(v1)), Function(get_asp_vehicle_repr(v2)), Number(dis_asp)])
+    else:
+        # v1在v2后面
+        dis_asp = None
+        dis = v2.position[0] - v1.position[0]
+        vr_sd = rss_safe_distance(v1, ego)
+        ego_sd = rss_safe_distance(ego, v2)
+        if dis < v2.LENGTH:
+            dis_asp = 0
+        elif dis <  v2.LENGTH + ego.LENGTH:
+            dis_asp = 1
+        elif dis < v2.LENGTH + ego.LENGTH + vr_sd:
+            dis_asp = 2
+        elif dis < v2.LENGTH + ego.LENGTH + vr_sd + ego_sd:
+            dis_asp = 3
+        else:
+            dis_asp = 4
+        return Function("distance", [Function(get_asp_vehicle_repr(v2)), Function(get_asp_vehicle_repr(v1)), Number(dis_asp)])
