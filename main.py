@@ -1,7 +1,7 @@
 import gymnasium as gym
 from matplotlib import pyplot as plt
 import numpy as np
-from planner.lattice_planner import lattice_plan, get_surround_vehicles
+from planner.lattice_planner import lattice_plan, lattice_plan_modeled, get_surround_vehicles
 from planner.pure_persuit import pure_persuit
 from forecast_model.forecast import Model
 from asp_decider.asp_plan import asp_plan
@@ -36,14 +36,14 @@ def model_check(road, ego, model):
     return True
 
 def plan_with_model(road, ego, model):
-    follow_vehs, overtake_vehs, cover_vehs, s_bound, l_bound = model.get_sample_area(1, road, ego)
+    front_vehs, rear_vehs, l_bound = model.get_sample_area(1, road, ego)
                 
     # if s_bound[1] - s_bound[0] < 1.0 or l_bound[1] - l_bound[0] < 0.5:
     if l_bound[1] - l_bound[0] < 0.5:
         print("Invalid sample area.")
         return None
     else:
-        traj = lattice_plan(road, ego, 30.0, sample_l_points=(np.linspace(l_bound[0], l_bound[1], 2) + [0.0] if l_bound[0]*l_bound[1]<0 else np.linspace(l_bound[0], l_bound[1], 3)), follow_obstacles=follow_vehs, overtake_obstacles=overtake_vehs, cover_obstacles=cover_vehs)
+        traj = lattice_plan_modeled(road, ego, 30.0, sample_l_points=np.linspace(l_bound[0], l_bound[1], 3), front_obstacles=front_vehs, rear_obstacles=rear_vehs)
         
         if traj is None:
             return None

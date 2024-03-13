@@ -23,6 +23,8 @@ class Model():
         self.lat_relations = [None]
         self.lon_relations = [None]
         self.target_lane_index = [ego.lane_index]
+        self.front_distances = [None]
+        self.rear_distances = [None]
         
         states = {}
         init_relations = {}
@@ -38,6 +40,8 @@ class Model():
         for answer in self.model[1:2]:
             lat_relations = {}
             lon_relations = {}
+            front_distance = {}
+            rear_distance = {}
 
             for atom in answer:
                 if len(atom.arguments) == 1:
@@ -55,10 +59,18 @@ class Model():
                         lat_relations[atom.arguments[0].name] = Relation.SAME_LANE
                     elif atom.name == "ego_on_lane":
                         target_lane_index = tsl_lane_repr_to_index(atom.arguments[0].name)
+                elif len(atom.arguments) == 3:
+                    if atom.name == "distance":
+                        if atom.arguments[0].name == get_asp_vehicle_repr(ego):
+                            rear_distance[atom.arguments[1].name] = float(atom.arguments[2].number)
+                        elif atom.arguments[1].name == get_asp_vehicle_repr(ego):
+                            front_distance[atom.arguments[0].name] = float(atom.arguments[2].number)
             
             self.lat_relations.append(lat_relations)
             self.lon_relations.append(lon_relations)
             self.target_lane_index.append(target_lane_index)
+            self.front_distances.append(front_distance)
+            self.rear_distances.append(rear_distance)
             
             probs = np.empty((len(states), forecast_model.shape[-3]))
             for i,veh in enumerate(states.keys()):
@@ -82,13 +94,11 @@ class Model():
     def get_sample_area(self, i, road:Road, ego:Vehicle):
         if i < 1 or i > len(self.lat_relations):
             raise ValueError("logical state index out of bound.")
-        max_l = [6.0]
-        min_l = [-6.0]
-        max_s = [200.0]
-        min_s = [0.1]
         follow_vehs = []
         overtake_vehs = []
         cover_vehs = []
+        front_vehs = []
+        rear_vehs = []
         
         # print(self.lat_relations[i])
         # print(self.lon_relations[i])
@@ -98,35 +108,38 @@ class Model():
         
         for veh_key in self.veh_dict.keys():
             veh = self.veh_dict[veh_key]
-            s, l, _, _, _ = cartesian_to_frenet_l1(
-                refline_project(refline, veh.position), *(get_state(veh)[:4])
-            )
+            if self.front_distances[i].get(veh_key, None) is not None:
+                front_vehs.append((veh, self.front_distances[i].get(veh_key, None)))
+            elif self.rear_distances[i].get(veh_key, None) is not None:
+                rear_vehs.append((veh, self.rear_distances[i].get(veh_key, None)))
+            # s, l, _, _, _ = cartesian_to_frenet_l1(
+            #     refline_project(refline, veh.position), *(get_state(veh)[:4])
+            # )
             # print(veh_key, s, l)
-            if self.lat_relations[i].get(veh_key, None) == Relation.LEFT:
-                min_l.append(l+veh.WIDTH)
-            elif self.lat_relations[i].get(veh_key, None) == Relation.RIGHT:
-                max_l.append(l-veh.WIDTH)
-            elif self.lat_relations[i].get(veh_key, None) == Relation.SAME_LANE:
-                min_l.append(l-veh.WIDTH)
-                max_l.append(l+veh.WIDTH)
-            if self.lon_relations[i].get(veh_key, None) == Relation.BEHIND:
-                min_s.append(s + veh.LENGTH + 5.0)
-                overtake_vehs.append(veh)
-            elif self.lon_relations[i].get(veh_key, None) == Relation.AHEAD:
-                max_s.append(s - veh.LENGTH - 5.0)
-                follow_vehs.append(veh)
-            elif self.lon_relations[i].get(veh_key, None) == Relation.COVER:
-                # min_s.append(s - veh.LENGTH)
-                # max_s.append(s + veh.LENGTH)
-                cover_vehs.append(veh)
+            # if self.lat_relations[i].get(veh_key, None) == Relation.LEFT:
+            #     min_l.append(l+veh.WIDTH)
+            # elif self.lat_relations[i].get(veh_key, None) == Relation.RIGHT:
+            #     max_l.append(l-veh.WIDTH)
+            # elif self.lat_relations[i].get(veh_key, None) == Relation.SAME_LANE:
+            #     min_l.append(l-veh.WIDTH)
+            #     max_l.append(l+veh.WIDTH)
+            # if self.lon_relations[i].get(veh_key, None) == Relation.BEHIND:
+            #     min_s.append(s + veh.LENGTH + 5.0)
+            #     overtake_vehs.append(veh)
+            # elif self.lon_relations[i].get(veh_key, None) == Relation.AHEAD:
+            #     max_s.append(s - veh.LENGTH - 5.0)
+            #     follow_vehs.append(veh)
+            # elif self.lon_relations[i].get(veh_key, None) == Relation.COVER:
+            #     # min_s.append(s - veh.LENGTH)
+            #     # max_s.append(s + veh.LENGTH)
+            #     cover_vehs.append(veh)
         l_offset = (self.target_lane_index[i][2] - ego.lane_index[2]) * 4.0
         # print("l bounds: ", (max(min_l), min(max_l)))
         # print("s bounds: ", (max(min_s), min(max_s)))
         # print("follow: ", follow_vehs)
         # print("overtake: ", overtake_vehs)
         # print("cover: ", cover_vehs)
-        return follow_vehs, overtake_vehs, cover_vehs, (max(min_s), min(max_s)), (l_offset-0.5, l_offset+0.5)
-        
+        return  front_vehs, rear_vehs, (l_offset-0.5, l_offset+0.5)
 
 def get_index(road, ego, veh):
     veh_surrounds = get_surround_6(road, veh)

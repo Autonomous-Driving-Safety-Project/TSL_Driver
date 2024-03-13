@@ -7,7 +7,9 @@ from highway_env.vehicle.kinematics import Vehicle
 from highway_env.road.lane import AbstractLane
 from highway_env.road.road import Road
 
-from typing import List
+from asp_decider.asp_utils import distance_asp_to_range
+
+from typing import List, Tuple
 
 SAMPLE_T_POINTS = [1.0, 2.0, 3.0, 4.0]
 SAMPLE_S_POINTS = [20.0, 40.0, 80.0]
@@ -743,9 +745,6 @@ def lattice_plan(
         sample_s_points: List[float]=None, 
         sample_l_points: List[float]=None,
         obstacles: List[Vehicle]=[],
-        follow_obstacles: List[Vehicle]=[],
-        overtake_obstacles: List[Vehicle]=[],
-        cover_obstacles: List[Vehicle]=[],
     ) -> List[TrajectoryPointCartesian]:
     if sample_s_points is None:
         sample_s_points = SAMPLE_S_POINTS
@@ -763,7 +762,7 @@ def lattice_plan(
     # S-T规划
     st_polys = []
     ## 巡航
-    if len(obstacles) == 0 and len(follow_obstacles) == 0 and len(overtake_obstacles) == 0 and len(cover_obstacles) == 0:
+    if len(obstacles) == 0:
         for t in sample_t_points:
             for v in np.linspace(0, SPEED_MAX, 7):
                 poly = PolynomeOrder4()
@@ -800,13 +799,86 @@ def lattice_plan(
                     np.float64(0.0),
                 )
                 st_polys.append(poly)
-    for veh in follow_obstacles:
+    # S-L规划
+    sl_polys = []
+    for s in sample_s_points:
+        for l in sample_l_points:
+            poly = PolynomeOrder5()
+            poly.fit(
+                np.float64(plan_init_point[0]),
+                np.float64(plan_init_point[1]),
+                np.float64(plan_init_point[4]),
+                np.float64(plan_init_point[7]),
+                np.float64(plan_init_point[0] + s),
+                np.float64(l),
+                np.float64(0.0),
+                np.float64(0.0),
+            )
+            sl_polys.append(poly)
+    # 合并轨迹，筛选
+    trajectories = []
+    for st_poly in st_polys:
+        for sl_poly in sl_polys:
+            trajectory = PolyTrajectory(st_poly, sl_poly)
+            trajectories.append(trajectory)
+    # TODO: 筛选
+    # 计算cost，排序
+    trajectories.sort(key=lambda x: x.cost(list(obstacles), refline, target_speed=target_speed))
+    # 转离散，执行碰撞检测
+    for traj in trajectories:
+        traj_discretized = traj.to_discretized(refline)
+        if collision_free(traj_discretized, list(obstacles), ego.WIDTH+COLLISION_CHECK_BUFFER_LAT, ego.LENGTH+COLLISION_CHECK_BUFFER_LON) and not off_road(traj_discretized, road):
+            return traj_discretized
+
+def lattice_plan_modeled(
+        road:Road, 
+        ego:Vehicle, 
+        target_speed: float, 
+        sample_t_points: List[float]=None, 
+        sample_s_points: List[float]=None, 
+        sample_l_points: List[float]=None,
+        obstacles: List[Vehicle]=[],
+        front_obstacles: List[Tuple[Vehicle, int]]=[],
+        rear_obstacles: List[Tuple[Vehicle, int]]=[],
+    ) -> List[TrajectoryPointCartesian]:
+    if sample_s_points is None:
+        sample_s_points = SAMPLE_S_POINTS
+    if sample_t_points is None:
+        sample_t_points = SAMPLE_T_POINTS
+    if sample_l_points is None:
+        sample_l_points = SAMPLE_L_POINTS
+    
+    refline = get_refline(ego, ego.lane)
+    # 获取规划起始点：用当前点代替
+    plan_init_point = cartesian_to_frenet_l2(
+        refline_project(refline, ego.position), *get_state(ego)
+    )  # s, l, dot(s), dot(l), l', ddot(s), ddot(l), l"
+    plan_init_t = 0
+    # S-T规划
+    st_polys = []
+    ## 巡航
+    if len(obstacles) == 0 and len(front_obstacles) == 0 and len(rear_obstacles) == 0:
+        for t in sample_t_points:
+            for v in np.linspace(0, SPEED_MAX, 7):
+                poly = PolynomeOrder4()
+                poly.fit(
+                    np.float64(plan_init_t),
+                    np.float64(plan_init_point[0]),
+                    np.float64(plan_init_point[2]),
+                    np.float64(plan_init_point[5]),
+                    np.float64(plan_init_t + t),
+                    np.float64(v),
+                    np.float64(0.0),
+                )
+                st_polys.append(poly)
+    ## 跟/超车
+    for veh in obstacles:
         curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
             refline_project(refline, veh.position), *(get_state(veh)[:4])
         )
         for t in sample_t_points:
             s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
-            sample_s = [s_min - BUFFER_YIELD - 5.0]
+            sample_s = [s_min - BUFFER_YIELD - 5.0, s_max + BUFFER_OVERTAKE + 5.0]
             for s in sample_s:
                 if s <= plan_init_point[0]:
                     s = plan_init_point[0] + 0.1
@@ -822,16 +894,18 @@ def lattice_plan(
                     np.float64(0.0),
                 )
                 st_polys.append(poly)
-    for veh in overtake_obstacles:
+    # 跟车
+    for veh,dis in front_obstacles:
         curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
             refline_project(refline, veh.position), *(get_state(veh)[:4])
         )
         for t in sample_t_points:
             s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
-            sample_s = [s_max + BUFFER_OVERTAKE + 5.0]
+            dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
+            sample_s = np.linspace(s_min-dis_max, s_min-dis_min, 3)
             for s in sample_s:
                 if s <= plan_init_point[0]:
-                    continue
+                    s = plan_init_point[0] + 0.1
                 poly = PolynomeOrder5()
                 poly.fit(
                     np.float64(plan_init_t),
@@ -844,16 +918,18 @@ def lattice_plan(
                     np.float64(0.0),
                 )
                 st_polys.append(poly)
-    for veh in cover_obstacles:
+    # 超车
+    for veh,dis in rear_obstacles:
         curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
             refline_project(refline, veh.position), *(get_state(veh)[:4])
         )
         for t in sample_t_points:
             s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
-            sample_s = [(s_min + s_max) / 2]
+            dis_min, dis_max = distance_asp_to_range(dis, ego, veh, ego)
+            sample_s = np.linspace(s_max+dis_min, s_max+dis_max, 3)
             for s in sample_s:
                 if s <= plan_init_point[0]:
-                    continue
+                    s = plan_init_point[0] + 0.1
                 poly = PolynomeOrder5()
                 poly.fit(
                     np.float64(plan_init_t),
@@ -890,9 +966,9 @@ def lattice_plan(
             trajectories.append(trajectory)
     # TODO: 筛选
     # 计算cost，排序
-    trajectories.sort(key=lambda x: x.cost(list(obstacles)+follow_obstacles+overtake_obstacles+cover_obstacles, refline, target_speed=target_speed))
+    trajectories.sort(key=lambda x: x.cost(list(obstacles) + [veh for veh,_ in front_obstacles] + [veh for veh,_ in rear_obstacles], refline, target_speed=target_speed))
     # 转离散，执行碰撞检测
     for traj in trajectories:
         traj_discretized = traj.to_discretized(refline)
-        if collision_free(traj_discretized, list(obstacles)+follow_obstacles+overtake_obstacles+cover_obstacles, ego.WIDTH+COLLISION_CHECK_BUFFER_LAT, ego.LENGTH+COLLISION_CHECK_BUFFER_LON) and not off_road(traj_discretized, road):
+        if collision_free(traj_discretized, list(obstacles) + [veh for veh,_ in front_obstacles] + [veh for veh,_ in rear_obstacles], ego.WIDTH+COLLISION_CHECK_BUFFER_LAT, ego.LENGTH+COLLISION_CHECK_BUFFER_LON) and not off_road(traj_discretized, road):
             return traj_discretized

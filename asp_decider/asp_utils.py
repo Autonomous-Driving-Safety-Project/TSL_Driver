@@ -104,7 +104,7 @@ def get_distance(v1:Vehicle, v2:Vehicle, ego:Vehicle):
         dis_asp = None
         dis = v1.position[0] - v2.position[0]
         vr_sd = rss_safe_distance(v2, ego)
-        ego_sd = rss_safe_distance(ego, v1 )
+        ego_sd = rss_safe_distance(ego, v1)
         if dis < v1.LENGTH:
             dis_asp = 0
         elif dis <  v1.LENGTH + ego.LENGTH:
@@ -133,3 +133,15 @@ def get_distance(v1:Vehicle, v2:Vehicle, ego:Vehicle):
         else:
             dis_asp = 4
         return Function("distance", [Function(get_asp_vehicle_repr(v2)), Function(get_asp_vehicle_repr(v1)), Number(dis_asp)])
+
+def distance_asp_to_range(dis_asp:int, vf:Vehicle, vr:Vehicle, ego:Vehicle):
+    vr_sd = rss_safe_distance(vr, ego)
+    ego_sd = rss_safe_distance(ego, vf)
+    distance_dict = {
+        0: (0, vf.LENGTH),
+        1: (vf.LENGTH, vf.LENGTH + ego.LENGTH),
+        2: (vf.LENGTH + ego.LENGTH, vf.LENGTH + ego.LENGTH + vr_sd),
+        3: (vf.LENGTH + ego.LENGTH + vr_sd, vf.LENGTH + ego.LENGTH + vr_sd + ego_sd),
+        4: (vf.LENGTH + ego.LENGTH + vr_sd + ego_sd, vf.LENGTH + ego.LENGTH + vr_sd + ego_sd + 100)
+    }
+    return distance_dict[dis_asp]
