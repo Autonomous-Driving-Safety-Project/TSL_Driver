@@ -9,7 +9,9 @@ def get_asp_lane_repr(from_: str, to_: str, id: int):
 def get_asp_road_repr(from_: str, to_: str):
     return f"f{from_}t{to_}"
 
-def asp2str(asp:List[Symbol], prefix:str=""):
+def asp2str(asp:List[Symbol], prefix:str="", filter:List[str]=[]):
+    if filter:
+        asp = [i for i in asp if i.name in filter]
     return prefix + "\n" +" \n".join([f"{i}." for i in asp])
 
 def road_network_to_asp(network: RoadNetwork) -> List[Symbol]:

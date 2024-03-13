@@ -17,7 +17,7 @@ def asp_plan(road: Road, ego: Vehicle, goal):
     #     return []
     # print(horizon)
     # models, _, _ = solve(map_asp_str, vehicle_asp_str, goal, imin=horizon, models=100, imax=horizon+1)
-    models, ret, _ = solve(map_asp_str, vehicle_asp_str, goal, models=100, imax=10)
+    models, ret, _ = solve(map_asp_str, vehicle_asp_str, goal, models=100, imax=10, branchcut=False)
     if not ret.satisfiable:
         print("UNSAT")
     return models

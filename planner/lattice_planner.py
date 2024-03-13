@@ -54,9 +54,13 @@ def get_surround_vehicles(road: Road, ego: Vehicle):
     return vehicles
 
 def estimate_vehicle_s_bound(veh: Vehicle, refline: np.ndarray, t:float):
+    s = estimate_vehicle_s(veh, refline, t)
+    return s - veh.LENGTH / 2, s + veh.LENGTH / 2
+
+def estimate_vehicle_s(veh: Vehicle, refline: np.ndarray, t:float):
     curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(refline_project(refline, veh.position), *(get_state(veh)[:4]))
     s = curr_s + curr_dot_s * t
-    return s - veh.LENGTH / 2, s + veh.LENGTH / 2
+    return s
 
 class Polynome(object): # abstract for typing
     def __init__(self) -> None:
@@ -900,9 +904,10 @@ def lattice_plan_modeled(
             refline_project(refline, veh.position), *(get_state(veh)[:4])
         )
         for t in sample_t_points:
-            s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+            # s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+            s = estimate_vehicle_s(veh, refline, t)
             dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
-            sample_s = np.linspace(s_min-dis_max, s_min-dis_min, 3)
+            sample_s = np.linspace(s-dis_max, s-dis_min, 3)
             for s in sample_s:
                 if s <= plan_init_point[0]:
                     s = plan_init_point[0] + 0.1
@@ -924,9 +929,10 @@ def lattice_plan_modeled(
             refline_project(refline, veh.position), *(get_state(veh)[:4])
         )
         for t in sample_t_points:
-            s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+            # s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+            s = estimate_vehicle_s(veh, refline, t)
             dis_min, dis_max = distance_asp_to_range(dis, ego, veh, ego)
-            sample_s = np.linspace(s_max+dis_min, s_max+dis_max, 3)
+            sample_s = np.linspace(s+dis_min, s+dis_max, 3)
             for s in sample_s:
                 if s <= plan_init_point[0]:
                     s = plan_init_point[0] + 0.1

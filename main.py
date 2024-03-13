@@ -75,8 +75,9 @@ while True:
                     raise RuntimeError("No plan found.")
                 models = [Model(model, road, ego) for model in models]
                 print(len(models))
-                models.sort(key=lambda x: x.get_prob(), reverse=True)
+                models.sort(key=lambda x: x.prob, reverse=True)
                 for model in models:
+                    print(model.prob)
                     action = plan_with_model(road, ego, model)
                     if action is not None:
                         exec_model = model
@@ -131,6 +132,8 @@ while True:
         plt.imsave("error.png", env.render())
         break
     obs, reward, done, truncated, info = env.step(action)
+    metric = env.unwrapped.get_metrics()
+    print(metric)
     env.render()
     
     if done or truncated:

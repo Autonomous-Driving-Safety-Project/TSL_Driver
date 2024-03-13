@@ -9,7 +9,7 @@ from data_collect.collect import Relation, get_relationship, get_surround_vehicl
 from planner.lattice_planner import cartesian_to_frenet_l1, get_refline, refline_project, get_state, get_surround_vehicles
 from asp_decider.asp_utils import neighbour_vehicle_to_asp, road_network_to_asp, asp2str, get_asp_vehicle_repr
 
-forecast_model = sparse.load_npz(os.path.join(os.path.dirname(__file__), "stat2.npz"))
+forecast_model = sparse.load_npz(os.path.join(os.path.dirname(__file__), "stat3.npz"))
 
 def tsl_lane_repr_to_index(lane_repr: str):
     matches = re.match(r'f(\d+)t(\d+)l(\d+)', lane_repr)
