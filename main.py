@@ -7,6 +7,8 @@ from forecast_model.forecast import Model
 from asp_decider.asp_plan import asp_plan
 from asp_decider.asp_utils import neighbour_vehicle_to_asp
 from highway_env.road.road import Road
+import pandas as pd
+from datetime import datetime
 
 env = gym.make('highway-v0', render_mode='rgb_array')
 env.config["offscreen_rendering"] = False
@@ -20,6 +22,8 @@ env.render()
 goal = """#program final.
 :- is_ego(E), is_vehicle(V), E != V, ahead(V,E).
 """
+
+metrics = pd.DataFrame(columns=["frame", "speed", "TTC_front", "TTC_rear", "done", "truncated"])
 
 def model_check(road, ego, model):
     # 检查当前逻辑状态是否符合ASP模型
@@ -60,6 +64,7 @@ def plan_without_model(road, ego):
     return action
 
 exec_model = None
+frame_count = 0
 
 while True:
     print("----------------------------------------------")
@@ -134,6 +139,17 @@ while True:
     obs, reward, done, truncated, info = env.step(action)
     metric = env.unwrapped.get_metrics()
     print(metric)
+    metrics = pd.concat([metrics,
+        pd.DataFrame({
+            "frame": frame_count,
+            "speed": metric["speed"],
+            "TTC_front": metric["TTC_front"],
+            "TTC_rear": metric["TTC_rear"],
+            "done": done,
+            "truncated": truncated
+        },index=[0])], ignore_index=True
+    )
+    frame_count += 1
     env.render()
     
     if done or truncated:
@@ -151,6 +167,8 @@ while True:
     # #     plt.plot(traj_p[:, 0], traj_p[:, 1], 'b-')
     # plt.imshow(env.render())
     # plt.show()
+
+metrics.to_csv(f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S_')}metrics.csv")
 input("Press Enter to continue...")
 
 env.close()
