@@ -8,8 +8,8 @@ def asp_plan(road: Road, ego: Vehicle, goal):
     map_asp_str = asp2str(map_asp, "#program always.")
     veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
     vehicle_asp_str = asp2str(veh_always, "#program always.") + '\n' + asp2str(veh_init, "#program initial.")
-    print(vehicle_asp_str)
-    print(map_asp_str)
+    # print(vehicle_asp_str)
+    # print(map_asp_str)
     # _, ret, horizon = solve(map_asp_str, vehicle_asp_str, goal + "\n#program dynamic.\non_lane(C,L) :- is_vehicle(C), not is_ego(C), _on_lane(C,L).", models=1, imax=10)
     # if not ret.satisfiable:
     #     print("UNSAT!")
