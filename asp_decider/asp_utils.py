@@ -144,6 +144,6 @@ def distance_asp_to_range(dis_asp:int, vf:Vehicle, vr:Vehicle, ego:Vehicle):
         1: (vf.LENGTH, vf.LENGTH + ego.LENGTH),
         2: (vf.LENGTH + ego.LENGTH, vf.LENGTH + ego.LENGTH + vr_sd),
         3: (vf.LENGTH + ego.LENGTH + vr_sd, vf.LENGTH + ego.LENGTH + vr_sd + ego_sd),
-        4: (vf.LENGTH + ego.LENGTH + vr_sd + ego_sd, vf.LENGTH + ego.LENGTH + vr_sd + ego_sd + 100)
+        4: (vf.LENGTH + ego.LENGTH + vr_sd + ego_sd, vf.LENGTH + ego.LENGTH + vr_sd + ego_sd + 200)
     }
     return distance_dict[dis_asp]
