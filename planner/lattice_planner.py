@@ -23,7 +23,7 @@ BUFFER_YIELD = 5.0
 BUFFER_OVERTAKE = 5.0
 COLLISION_COST_VAR = 0.25
 
-WEIGHT_LON_OBJECTIVE = 3.0
+WEIGHT_LON_OBJECTIVE = 4.0
 WEIGHT_LON_JERK = 0.0
 WEIGHT_LON_COLLISION = 25.0
 WEIGHT_LAT_OFFSET = 0.1
@@ -885,15 +885,18 @@ def lattice_plan_modeled(
             dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
             sample_s_min.append(s-dis_max)
             sample_s_max.append(s-dis_min)
+            print(f"{id(veh) % 1000}: {s-dis_max:.2f} ~ {s-dis_min:.2f}")
+        if min(sample_s_max) - max(sample_s_min) < -20.0:
+            continue
         for veh,dis in rear_obstacles:
             s = estimate_vehicle_s(veh, refline, t)
             dis_min, dis_max = distance_asp_to_range(dis, ego, veh, ego)
             sample_s_min.append(s+dis_min)
             sample_s_max.append(s+dis_max)
+            print(f"{id(veh) % 1000}: {s+dis_min:.2f} ~ {s+dis_max:.2f}")
         s_min = max(sample_s_min)
         s_max = min(sample_s_max)
-        if s_max - s_min < -20.0:
-            continue
+        
         for veh, _ in front_obstacles + rear_obstacles:
             curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
                 refline_project(refline, veh.position), *(get_state(veh)[:4])
@@ -901,7 +904,7 @@ def lattice_plan_modeled(
             for s in np.linspace(s_min, s_max, 5):
                 if s <= plan_init_point[0]:
                     s = plan_init_point[0] + 0.1
-                for v in np.linspace(curr_dot_s-5.0, curr_dot_s+5.0, 3):
+                for v in np.linspace(curr_dot_s-10.0, curr_dot_s+10.0, 3):
                     poly = PolynomeOrder5()
                     poly.fit(
                         np.float64(plan_init_t),

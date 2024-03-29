@@ -5,7 +5,7 @@ from planner.lattice_planner import lattice_plan, lattice_plan_modeled, get_surr
 from planner.pure_persuit import pure_persuit
 from forecast_model.forecast import Model
 from asp_decider.asp_plan import asp_plan
-from asp_decider.asp_utils import neighbour_vehicle_to_asp, distance_asp_to_range
+from asp_decider.asp_utils import neighbour_vehicle_to_asp, distance_asp_to_range, road_network_to_asp, asp2str
 from highway_env.road.road import Road
 import pandas as pd
 from datetime import datetime
@@ -82,7 +82,7 @@ for episode in range(50):
                         raise RuntimeError("No plan found.")
                     models = [Model(model, road, ego) for model in models]
                     print(len(models))
-                    models.sort(key=lambda x: x.prob, reverse=True)
+                    # models.sort(key=lambda x: x.prob, reverse=True)
                     for model in models:
                         print(model.prob)
                         action = plan_with_model(road, ego, model)
@@ -100,15 +100,56 @@ for episode in range(50):
                     print("Cannot use last model. Replan.")
                     continue
         except RuntimeWarning:
+            dump_name = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
+            vehicle_asp_str = asp2str(veh_always, "#program always.") + '\n' + asp2str(veh_init, "#program initial.")
+            models = asp_plan(road, ego, goal)
+            
+            with open(f"{dump_name}_warn.log", "w") as f:
+                f.write(vehicle_asp_str)
+                for v in road.vehicles:
+                    f.write(f"\n{id(v) % 1000}: {v.position}, {v.speed}")
+                
+                f.write("\n")
+                for i,model in enumerate(models):
+                    f.write(f"Model {i}:\n")
+                    m = Model(model, road, ego)
+                    for j,state in enumerate(model):
+                        f.write(f"State {j}:\n")
+                        f.writelines([str(pred) for pred in state])
+                        f.write("\n")
+                    front_vehs, rear_vehs, l_bound = m.get_sample_area(1, road, ego)
+                    f.write(f"front: {[(id(veh) % 1000, dis, distance_asp_to_range(dis, veh, ego, ego)) for veh,dis in front_vehs]}\n")
+                    f.write(f"rear: {[(id(veh) % 1000, dis, distance_asp_to_range(dis, ego, veh, ego)) for veh,dis in rear_vehs]}\n")
+                    from planner.lattice_planner import get_refline, estimate_vehicle_s
+                    refline = get_refline(ego, ego.lane)
+                    for t in [1.0, 2.0, 3.0, 4.0]:
+                        for veh,dis in front_vehs:
+                            s = estimate_vehicle_s(veh, refline, t)
+                            dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
+                            f.write(f"veh_{id(veh) % 1000}: {s-dis_max} ~ {s-dis_min}\n")
+                        for veh,dis in rear_vehs:
+                            s = estimate_vehicle_s(veh, refline, t)
+                            dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
+                            f.write(f"veh_{id(veh) % 1000}: {s+dis_min} ~ {s+dis_max}\n")
+            plt.imsave(f"{dump_name}_warn.png", env.render())
             action = plan_without_model(road, ego)
             if action is None:
                 print("Unable to plan. Use zero action.")
                 action = np.array([0.0, 0.0])
         except RuntimeError:
             print("Unsatisfiable. Image dumped.")
-            for v in road.vehicles:
-                print(f"{id(v) % 1000}: {v.position}, {v.speed}")
-            plt.imsave("error.png", env.render())
+            dump_name = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
+            vehicle_asp_str = asp2str(veh_always, "#program always.") + '\n' + asp2str(veh_init, "#program initial.")
+            # print(vehicle_asp_str)
+            # for v in road.vehicles:
+            #     print(f"{id(v) % 1000}: {v.position}, {v.speed}")
+            with open(f"{dump_name}_error.log", "w") as f:
+                f.write(vehicle_asp_str)
+                for v in road.vehicles:
+                    f.write(f"\n{id(v) % 1000}: {v.position}, {v.speed}")
+            plt.imsave(f"{dump_name}_error.png", env.render())
             break
         obs, reward, done, truncated, info = env.step(action)
         metric = env.unwrapped.get_metrics()
