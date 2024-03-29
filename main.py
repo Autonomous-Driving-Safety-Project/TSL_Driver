@@ -5,7 +5,7 @@ from planner.lattice_planner import lattice_plan, lattice_plan_modeled, get_surr
 from planner.pure_persuit import pure_persuit
 from forecast_model.forecast import Model
 from asp_decider.asp_plan import asp_plan
-from asp_decider.asp_utils import neighbour_vehicle_to_asp
+from asp_decider.asp_utils import neighbour_vehicle_to_asp, distance_asp_to_range
 from highway_env.road.road import Road
 import pandas as pd
 from datetime import datetime
@@ -33,6 +33,8 @@ def model_check(road, ego, model):
 
 def plan_with_model(road, ego, model):
     front_vehs, rear_vehs, l_bound = model.get_sample_area(1, road, ego)
+    print("front: ",[(id(veh) % 1000, dis, distance_asp_to_range(dis, veh, ego, ego)) for veh,dis in front_vehs])
+    print("rear: ",[(id(veh) % 1000, dis, distance_asp_to_range(dis, ego, veh, ego)) for veh,dis in rear_vehs])
                 
     # if s_bound[1] - s_bound[0] < 1.0 or l_bound[1] - l_bound[0] < 0.5:
     if l_bound[1] - l_bound[0] < 0.5:

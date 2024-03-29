@@ -15,7 +15,7 @@ SAMPLE_T_POINTS = [1.0, 2.0, 3.0, 4.0]
 SAMPLE_S_POINTS = [20.0, 40.0, 80.0]
 SAMPLE_L_POINTS = [-4.0, 0.0, 4.0]
 SPEED_MAX = 30.0
-ACC_MAX = 10.0
+ACC_MAX = 6.0
 ACC_MIN = -10.0
 T_PRECISION = 0.2
 S_PRECISION = 0.2
@@ -23,15 +23,15 @@ BUFFER_YIELD = 5.0
 BUFFER_OVERTAKE = 5.0
 COLLISION_COST_VAR = 0.25
 
-WEIGHT_LON_OBJECTIVE = 5.0
+WEIGHT_LON_OBJECTIVE = 3.0
 WEIGHT_LON_JERK = 0.0
-WEIGHT_LON_COLLISION = 20.0
+WEIGHT_LON_COLLISION = 25.0
 WEIGHT_LAT_OFFSET = 0.1
 WEIGHT_LAT_COMFORT = 0.0
 WEIGHT_CENTRIPETAL_ACCELERATION = 0.0
 
 COLLISION_CHECK_BUFFER_LON = 2.0
-COLLISION_CHECK_BUFFER_LAT = 1.0
+COLLISION_CHECK_BUFFER_LAT = 2.0
 
 def get_state(ego: Vehicle):
     position = ego.position
@@ -876,78 +876,98 @@ def lattice_plan_modeled(
                 )
                 st_polys.append(poly)
     ## 跟/超车
-    for veh in obstacles:
-        curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
-            refline_project(refline, veh.position), *(get_state(veh)[:4])
-        )
-        for t in sample_t_points:
-            s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
-            sample_s = [s_min - BUFFER_YIELD - 5.0, s_max + BUFFER_OVERTAKE + 5.0]
-            for s in sample_s:
-                if s <= plan_init_point[0]:
-                    s = plan_init_point[0] + 0.1
-                poly = PolynomeOrder5()
-                poly.fit(
-                    np.float64(plan_init_t),
-                    np.float64(plan_init_point[0]),
-                    np.float64(plan_init_point[2]),
-                    np.float64(plan_init_point[5]),
-                    np.float64(plan_init_t + t),
-                    np.float64(s),
-                    np.float64(curr_dot_s),
-                    np.float64(0.0),
-                )
-                st_polys.append(poly)
-    # 跟车
-    for veh,dis in front_obstacles:
-        curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
-            refline_project(refline, veh.position), *(get_state(veh)[:4])
-        )
-        for t in sample_t_points:
-            # s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+    # 获取前车作为规划末速度
+    for t in sample_t_points:
+        sample_s_min = [plan_init_point[0] + 0.1]
+        sample_s_max = [200.0]
+        for veh,dis in front_obstacles:
             s = estimate_vehicle_s(veh, refline, t)
             dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
-            sample_s = np.linspace(s-dis_max, s-dis_min, 3)
-            for s in sample_s:
-                if s <= plan_init_point[0]:
-                    s = plan_init_point[0] + 0.1
-                poly = PolynomeOrder5()
-                poly.fit(
-                    np.float64(plan_init_t),
-                    np.float64(plan_init_point[0]),
-                    np.float64(plan_init_point[2]),
-                    np.float64(plan_init_point[5]),
-                    np.float64(plan_init_t + t),
-                    np.float64(s),
-                    np.float64(curr_dot_s),
-                    np.float64(0.0),
-                )
-                st_polys.append(poly)
-    # 超车
-    for veh,dis in rear_obstacles:
-        curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
-            refline_project(refline, veh.position), *(get_state(veh)[:4])
-        )
-        for t in sample_t_points:
-            # s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+            sample_s_min.append(s-dis_max)
+            sample_s_max.append(s-dis_min)
+        for veh,dis in rear_obstacles:
             s = estimate_vehicle_s(veh, refline, t)
             dis_min, dis_max = distance_asp_to_range(dis, ego, veh, ego)
-            sample_s = np.linspace(s+dis_min, s+dis_max, 3)
-            for s in sample_s:
+            sample_s_min.append(s+dis_min)
+            sample_s_max.append(s+dis_max)
+        s_min = max(sample_s_min)
+        s_max = min(sample_s_max)
+        if s_max - s_min < -20.0:
+            continue
+        for veh, _ in front_obstacles + rear_obstacles:
+            curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
+                refline_project(refline, veh.position), *(get_state(veh)[:4])
+            )
+            for s in np.linspace(s_min, s_max, 5):
                 if s <= plan_init_point[0]:
                     s = plan_init_point[0] + 0.1
-                poly = PolynomeOrder5()
-                poly.fit(
-                    np.float64(plan_init_t),
-                    np.float64(plan_init_point[0]),
-                    np.float64(plan_init_point[2]),
-                    np.float64(plan_init_point[5]),
-                    np.float64(plan_init_t + t),
-                    np.float64(s),
-                    np.float64(curr_dot_s),
-                    np.float64(0.0),
-                )
-                st_polys.append(poly)
+                for v in np.linspace(curr_dot_s-5.0, curr_dot_s+5.0, 3):
+                    poly = PolynomeOrder5()
+                    poly.fit(
+                        np.float64(plan_init_t),
+                        np.float64(plan_init_point[0]),
+                        np.float64(plan_init_point[2]),
+                        np.float64(plan_init_point[5]),
+                        np.float64(plan_init_t + t),
+                        np.float64(s),
+                        np.float64(v),
+                        np.float64(0.0),
+                    )
+                    st_polys.append(poly)
+    if len(st_polys) == 0:
+        return None
+    # # 跟车
+    # for veh,dis in front_obstacles:
+    #     curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
+    #         refline_project(refline, veh.position), *(get_state(veh)[:4])
+    #     )
+    #     for t in sample_t_points:
+    #         # s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+    #         s = estimate_vehicle_s(veh, refline, t)
+    #         dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
+    #         sample_s = np.linspace(s-dis_max, s-dis_min, 5)
+    #         for s in sample_s:
+    #             if s <= plan_init_point[0]:
+    #                 s = plan_init_point[0] + 0.1
+    #             for dv in [-5.0,0.0]:
+    #                 poly = PolynomeOrder5()
+    #                 poly.fit(
+    #                     np.float64(plan_init_t),
+    #                     np.float64(plan_init_point[0]),
+    #                     np.float64(plan_init_point[2]),
+    #                     np.float64(plan_init_point[5]),
+    #                     np.float64(plan_init_t + t),
+    #                     np.float64(s),
+    #                     np.float64(curr_dot_s+dv),
+    #                     np.float64(0.0),
+    #                 )
+    #                 st_polys.append(poly)
+    # # 超车
+    # for veh,dis in rear_obstacles:
+    #     curr_s, _, curr_dot_s, _, _ = cartesian_to_frenet_l1(
+    #         refline_project(refline, veh.position), *(get_state(veh)[:4])
+    #     )
+    #     for t in sample_t_points:
+    #         # s_min, s_max = estimate_vehicle_s_bound(veh, refline, t)
+    #         s = estimate_vehicle_s(veh, refline, t)
+    #         dis_min, dis_max = distance_asp_to_range(dis, ego, veh, ego)
+    #         sample_s = np.linspace(s+dis_min, s+dis_max, 5)
+    #         for s in sample_s:
+    #             if s <= plan_init_point[0]:
+    #                 s = plan_init_point[0] + 0.1
+    #             for dv in [5.0,0.0]:
+    #                 poly = PolynomeOrder5()
+    #                 poly.fit(
+    #                     np.float64(plan_init_t),
+    #                     np.float64(plan_init_point[0]),
+    #                     np.float64(plan_init_point[2]),
+    #                     np.float64(plan_init_point[5]),
+    #                     np.float64(plan_init_t + t),
+    #                     np.float64(s),
+    #                     np.float64(curr_dot_s+dv),
+    #                     np.float64(0.0),
+    #                 )
+    #                 st_polys.append(poly)
     # S-L规划
     sl_polys = []
     for s in sample_s_points:

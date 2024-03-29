@@ -62,9 +62,9 @@ class Model():
                 elif len(atom.arguments) == 3:
                     if atom.name == "distance":
                         if atom.arguments[0].name == get_asp_vehicle_repr(ego):
-                            rear_distance[atom.arguments[1].name] = float(atom.arguments[2].number)
+                            rear_distance[atom.arguments[1].name] = int(atom.arguments[2].number)
                         elif atom.arguments[1].name == get_asp_vehicle_repr(ego):
-                            front_distance[atom.arguments[0].name] = float(atom.arguments[2].number)
+                            front_distance[atom.arguments[0].name] = int(atom.arguments[2].number)
             
             self.lat_relations.append(lat_relations)
             self.lon_relations.append(lon_relations)
@@ -94,9 +94,9 @@ class Model():
     def get_sample_area(self, i, road:Road, ego:Vehicle):
         if i < 1 or i > len(self.lat_relations):
             raise ValueError("logical state index out of bound.")
-        follow_vehs = []
-        overtake_vehs = []
-        cover_vehs = []
+        # follow_vehs = []
+        # overtake_vehs = []
+        # cover_vehs = []
         front_vehs = []
         rear_vehs = []
         
@@ -104,7 +104,7 @@ class Model():
         # print(self.lon_relations[i])
         print({k: Relation(self.lon_relations[i][k], self.lat_relations[i].get(k, None)) for k, v in self.lon_relations[i].items()})
         
-        refline = get_refline(ego, ego.lane)
+        # refline = get_refline(ego, ego.lane)
         
         for veh_key in self.veh_dict.keys():
             veh = self.veh_dict[veh_key]
