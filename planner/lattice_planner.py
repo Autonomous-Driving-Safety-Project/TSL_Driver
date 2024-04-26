@@ -23,9 +23,9 @@ BUFFER_YIELD = 5.0
 BUFFER_OVERTAKE = 5.0
 COLLISION_COST_VAR = 0.25
 
-WEIGHT_LON_OBJECTIVE = 4.0
+WEIGHT_LON_OBJECTIVE = 5.0
 WEIGHT_LON_JERK = 0.0
-WEIGHT_LON_COLLISION = 25.0
+WEIGHT_LON_COLLISION = 10.0
 WEIGHT_LAT_OFFSET = 0.1
 WEIGHT_LAT_COMFORT = 0.0
 WEIGHT_CENTRIPETAL_ACCELERATION = 0.0
@@ -885,7 +885,7 @@ def lattice_plan_modeled(
             dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
             sample_s_min.append(s-dis_max)
             sample_s_max.append(s-dis_min)
-            print(f"{id(veh) % 1000}: {s-dis_max:.2f} ~ {s-dis_min:.2f}")
+            print(f"{veh.id}: {s-dis_max:.2f} ~ {s-dis_min:.2f}")
         if min(sample_s_max) - max(sample_s_min) < -20.0:
             continue
         for veh,dis in rear_obstacles:
@@ -893,7 +893,7 @@ def lattice_plan_modeled(
             dis_min, dis_max = distance_asp_to_range(dis, ego, veh, ego)
             sample_s_min.append(s+dis_min)
             sample_s_max.append(s+dis_max)
-            print(f"{id(veh) % 1000}: {s+dis_min:.2f} ~ {s+dis_max:.2f}")
+            print(f"{veh.id}: {s+dis_min:.2f} ~ {s+dis_max:.2f}")
         s_min = max(sample_s_min)
         s_max = min(sample_s_max)
         

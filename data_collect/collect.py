@@ -89,7 +89,7 @@ def collect(episodes=5, frames=10, render=False, file_name="data.csv"):
                 data = {
                     "episode": episode, 
                     "frame": frame, 
-                    "ego_id": id(ego) % 1000,
+                    "ego_id": ego.id,
                     "ego_position_x": ego.position[0],
                     "ego_position_y": ego.position[1],
                     "ego_speed": ego.speed,
@@ -98,7 +98,7 @@ def collect(episodes=5, frames=10, render=False, file_name="data.csv"):
                     "vehicle_position_y": veh.position[1],
                     "vehicle_speed": veh.speed,
                     "vehicle_heading": veh.heading,
-                    "vehicle_id": id(veh) % 1000,
+                    "vehicle_id": veh.id,
                     "relate_position_x": veh.position[0] - ego.position[0],
                     "relate_position_y": veh.position[1] - ego.position[1],
                     "relate_speed": veh.speed - ego.speed,

@@ -42,7 +42,7 @@ def road_network_to_asp(network: RoadNetwork) -> List[Symbol]:
     return result
 
 def get_asp_vehicle_repr(vehicle):
-    return f"veh_{id(vehicle) % 1000}"
+    return f"veh_{vehicle.id}"
 
 def get_lon_relation(v1, v2) -> Symbol:
     dist = v1.lane_distance_to(v2, v1.lane)
