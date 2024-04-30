@@ -12,16 +12,21 @@ from highway_env import utils
 import pandas as pd
 from datetime import datetime
 import os
+from asp_decider.asp_grounding import SLTVArea
 
 env = gym.make('highway-v0', render_mode='rgb_array')
 env.config["offscreen_rendering"] = False
 env.config["policy_frequency"] = 15
 env.config["action"]["type"] = "ContinuousAction"
 env.config["action"]["acceleration_range"] = (-10.0, 10.0)
-env.config["vehicles_density"] = 1
+env.config["vehicles_density"] = 1.0
+env.config["screen_width"] = 1000
 
 log_dir = os.path.join(os.path.dirname(__file__), "log", datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
 os.makedirs(log_dir, exist_ok=True)
+
+with open(os.path.join(log_dir,"env_config.txt"), "w") as f:
+    f.write(str(env.config))
 
 def model_check(road, ego, model):
     # 检查当前逻辑状态是否符合ASP模型
@@ -30,30 +35,49 @@ def model_check(road, ego, model):
     veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
     for predicate in veh_init:
         if predicate not in model.model[0]:
-            print("Model Check Failed!")
+            print("\033[33mModel Check Failed!\033[0m")
             # print(predicate)
             # print([str(p) for p in model.model[0]])
             return False
-    print("Model Check Passed!")
+    print("\033[32mModel Check Passed!\033[0m")
     return True
 
 def plan_with_model(road, ego, model):
-    front_vehs, rear_vehs, l_bound = model.get_sample_area(1, road, ego)
-    print("front: ",[(veh.id, dis, distance_asp_to_range(dis, veh, ego, ego)) for veh,dis in front_vehs])
-    print("rear: ",[(veh.id, dis, distance_asp_to_range(dis, ego, veh, ego)) for veh,dis in rear_vehs])
+    # front_vehs, rear_vehs, l_bound = model.get_sample_area(1, road, ego)
+    # print("front: ",[(veh.id, dis, distance_asp_to_range(dis, veh, ego, ego)) for veh,dis in front_vehs])
+    # print("rear: ",[(veh.id, dis, distance_asp_to_range(dis, ego, veh, ego)) for veh,dis in rear_vehs])
                 
     # if s_bound[1] - s_bound[0] < 1.0 or l_bound[1] - l_bound[0] < 0.5:
-    if l_bound[1] - l_bound[0] < 0.5:
-        print("Invalid sample area.")
+    # if l_bound[1] - l_bound[0] < 0.5:
+    #     print("Invalid sample area.")
+    #     return None
+    # else:
+    area = SLTVArea(model, road, ego)
+    traj = lattice_plan_modeled(road, ego, 30.0, area, obstacles=get_surround_vehicles(road, ego))
+    
+    if traj is None:
         return None
-    else:
-        traj = lattice_plan_modeled(road, ego, 30.0, sample_l_points=np.linspace(l_bound[0], l_bound[1], 3), front_obstacles=front_vehs, rear_obstacles=rear_vehs)
-        
-        if traj is None:
-            return None
-        acc, steer = pure_persuit(traj, ego)
-        action = np.array([acc / 10.0, steer / 0.7853981633974483])
-        return action
+    acc, steer = pure_persuit(traj, ego)
+    action = np.array([acc / 10.0, steer / 0.7853981633974483])
+    
+    traj_p = np.array([[p.x, p.y] for p in traj])
+    traj_p -= ego.position
+    traj_p *= env.unwrapped.config["scaling"]
+    traj_p += np.array([300, 73])
+    plt.ion()
+    plt.clf()
+    plt.plot(traj_p[:, 0], traj_p[:, 1], 'r-')
+    # for traj in trajs:
+    #     traj_p = np.array([[p.x, p.y] for p in traj])
+    #     traj_p -= ego.position
+    #     traj_p += np.array([180, 73])
+    #     plt.plot(traj_p[:, 0], traj_p[:, 1], 'b-')
+    plt.imshow(env.render())
+    plt.show()
+    plt.pause(0.001)
+    plt.ioff()
+    
+    return action
 
 # def plan_without_model(road, ego):
 #     traj = lattice_plan(road, ego, 30.0, obstacles=get_surround_vehicles(road, ego))
@@ -195,6 +219,7 @@ for episode in range(50):
     frame_count = 0
 
     while True:
+        # input("Press Enter to continue...")
         print("----------------------------------------------")
         road:Road = None
         road, ego = env.unwrapped.get_ground_truth()
@@ -206,61 +231,64 @@ for episode in range(50):
                     if len(models) == 0:
                         raise RuntimeError("No plan found.")
                     models = [Model(model, road, ego) for model in models]
-                    print(len(models))
+                    print(f"Got {len(models)} Models.")
                     # models.sort(key=lambda x: x.prob, reverse=True)
                     for model in models:
-                        print(model.prob)
+                        # print(model.prob)
+                        print(model)
                         action = plan_with_model(road, ego, model)
                         if action is not None:
                             exec_model = model
                             break
                     if action is None:
-                        print("All model is invalid. Downgrade to naive lattice planner.")
+                        print("\033[31mAll model is invalid. Downgrade to backup planner.\033[0m")
                         raise RuntimeWarning("No plan found.")
             
             else:
+                print(exec_model)
                 action = plan_with_model(road, ego, exec_model)
                 if action is None:
                     exec_model = None
-                    print("Cannot use last model. Replan.")
+                    print("\033[31mCannot use last model. Replan.\033[0m")
                     continue
         except RuntimeWarning:
-            # dump_name = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-            # veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
-            # vehicle_asp_str = asp2str(veh_always, "#program always.") + '\n' + asp2str(veh_init, "#program initial.")
-            # models = asp_plan(road, ego, goal)
+            # input("Press Enter to continue...")
+            dump_name = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
+            vehicle_asp_str = asp2str(veh_always, "#program always.") + '\n' + asp2str(veh_init, "#program initial.")
+            models = asp_plan(road, ego, goal)
             
-            # with open(os.path.join(log_dir,f"{dump_name}_warn.log"), "w") as f:
-            #     f.write(vehicle_asp_str)
-            #     for v in road.vehicles:
-            #         f.write(f"\n{v.id}: {v.position}, {v.speed}")
+            with open(os.path.join(log_dir,f"{dump_name}_warn.log"), "w") as f:
+                f.write(vehicle_asp_str)
+                for v in road.vehicles:
+                    f.write(f"\n{v.id}: {v.position}, {v.speed}")
                 
-            #     f.write("\n")
-            #     for i,model in enumerate(models):
-            #         f.write(f"Model {i}:\n")
-            #         m = Model(model, road, ego)
-            #         for j,state in enumerate(model):
-            #             f.write(f"State {j}:\n")
-            #             f.writelines([str(pred) for pred in state])
-            #             f.write("\n")
-            #         front_vehs, rear_vehs, l_bound = m.get_sample_area(1, road, ego)
-            #         f.write(f"front: {[(veh.id, dis, distance_asp_to_range(dis, veh, ego, ego)) for veh,dis in front_vehs]}\n")
-            #         f.write(f"rear: {[(veh.id, dis, distance_asp_to_range(dis, ego, veh, ego)) for veh,dis in rear_vehs]}\n")
-            #         from planner.lattice_planner import get_refline, estimate_vehicle_s
-            #         refline = get_refline(ego, ego.lane)
-            #         for t in [1.0, 2.0, 3.0, 4.0]:
-            #             for veh,dis in front_vehs:
-            #                 s = estimate_vehicle_s(veh, refline, t)
-            #                 dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
-            #                 f.write(f"veh_{veh.id}: {s-dis_max} ~ {s-dis_min}\n")
-            #             for veh,dis in rear_vehs:
-            #                 s = estimate_vehicle_s(veh, refline, t)
-            #                 dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
-            #                 f.write(f"veh_{veh.id}: {s+dis_min} ~ {s+dis_max}\n")
-            # plt.imsave(os.path.join(log_dir,f"{dump_name}_warn.png"), env.render())
+                f.write("\n")
+                for i,model in enumerate(models):
+                    f.write(f"Model {i}:\n")
+                    m = Model(model, road, ego)
+                    for j,state in enumerate(model):
+                        f.write(f"State {j}:\n")
+                        f.writelines([str(pred) for pred in state])
+                        f.write("\n")
+                    # front_vehs, rear_vehs, l_bound = m.get_sample_area(1, road, ego)
+                    # f.write(f"front: {[(veh.id, dis, distance_asp_to_range(dis, veh, ego, ego)) for veh,dis in front_vehs]}\n")
+                    # f.write(f"rear: {[(veh.id, dis, distance_asp_to_range(dis, ego, veh, ego)) for veh,dis in rear_vehs]}\n")
+                    # from planner.lattice_planner import get_refline, estimate_vehicle_s
+                    # refline = get_refline(ego, ego.lane)
+                    # for t in [1.0, 2.0, 3.0, 4.0]:
+                    #     for veh,dis in front_vehs:
+                    #         s = estimate_vehicle_s(veh, refline, t)
+                    #         dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
+                    #         f.write(f"veh_{veh.id}: {s-dis_max} ~ {s-dis_min}\n")
+                    #     for veh,dis in rear_vehs:
+                    #         s = estimate_vehicle_s(veh, refline, t)
+                    #         dis_min, dis_max = distance_asp_to_range(dis, veh, ego, ego)
+                    #         f.write(f"veh_{veh.id}: {s+dis_min} ~ {s+dis_max}\n")
+            plt.imsave(os.path.join(log_dir,f"{dump_name}_warn.png"), env.render())
             action = plan_without_model(road, ego)
             if action is None:
-                print("Unable to plan. Use zero action.")
+                print("\033[31mUnable to plan. Use zero action.\033[0m")
                 action = np.array([0.0, 0.0])
         except RuntimeError:
             print("Unsatisfiable. Image dumped.")
@@ -294,7 +322,7 @@ for episode in range(50):
         
         if done:
             # collision
-            print("Collision detected. Image dumped.")
+            print("\033[1;31mCollision detected. Image dumped.\033[0m")
             dump_name = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
             veh_always, veh_init = neighbour_vehicle_to_asp(road, ego)
             vehicle_asp_str = asp2str(veh_always, "#program always.") + '\n' + asp2str(veh_init, "#program initial.")

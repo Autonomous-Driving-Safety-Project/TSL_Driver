@@ -17,15 +17,17 @@ def asp_plan(road: Road, ego: Vehicle, goal):
     #     return []
     # print(horizon)
     # models, _, _ = solve(map_asp_str, vehicle_asp_str, goal, imin=horizon, models=100, imax=horizon+1)
-    models, ret, _ = solve(map_asp_str, vehicle_asp_str, goal, models=10, imax=20, branchcut=True,
+    models, ret, horizon = solve(map_asp_str, vehicle_asp_str, goal, models=100, imin=12, imax=20, branchcut=True,
                         #    options=["--heuristic=Domain"]
                            options=["--project=project"]
     )
     if not ret.satisfiable:
-        print(vehicle_asp_str)
+        # print(vehicle_asp_str)
         print("\033[31mUNSAT, plan without goal!\033[0m")
         models, ret, _ = solve(map_asp_str, vehicle_asp_str, models=10, imin=2, imax=2)
         if not ret.satisfiable:
             raise RuntimeError("UNSAT!")
-        models = [model for model in models if len(model) > 1]
+    models = [model for model in models if len(model) > 1]
+    # else:
+    #     models, _, _ = solve(map_asp_str, vehicle_asp_str, goal, models=100, imin=horizon+1, imax=20, branchcut=True, options=["--project=project"])
     return models

@@ -3,7 +3,7 @@ from highway_env.vehicle.kinematics import Vehicle
 import numpy as np
 from typing import List
 
-LOOKAHEAD_DISTANCE = 3.0
+LOOKAHEAD_DISTANCE = 0.1
 
 def pure_persuit(trajectory: List[TrajectoryPointCartesian], ego: Vehicle):
     for traj_point in trajectory:

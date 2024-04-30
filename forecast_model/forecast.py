@@ -6,7 +6,7 @@ from highway_env.vehicle.kinematics import Vehicle
 from highway_env.road.lane import AbstractLane
 from highway_env.road.road import Road
 from data_collect.collect import Relation, get_relationship, get_surround_vehicles as get_surround_6
-from planner.lattice_planner import cartesian_to_frenet_l1, get_refline, refline_project, get_state, get_surround_vehicles
+from planner.utils import cartesian_to_frenet_l1, get_refline, refline_project, get_state, get_surround_vehicles
 from asp_decider.asp_utils import neighbour_vehicle_to_asp, road_network_to_asp, asp2str, get_asp_vehicle_repr
 
 forecast_model = sparse.load_npz(os.path.join(os.path.dirname(__file__), "stat3.npz"))
@@ -88,6 +88,14 @@ class Model():
                 # print(v)
             self.prob *= probs.prod(axis=0).sum()
     
+    def __repr__(self):
+        i = 1
+        x = {k: (Relation(self.lon_relations[i][k], self.lat_relations[i].get(k, None)), self.front_distances[i].get(k, None), self.rear_distances[i].get(k, None)) for k, v in self.lon_relations[i].items()}
+        return sorted(x.items())
+    
+    def __str__(self) -> str:
+        return str(self.__repr__())
+    
     def get_prob(self):
         return self.prob
     
@@ -102,7 +110,7 @@ class Model():
         
         # print(self.lat_relations[i])
         # print(self.lon_relations[i])
-        print({k: Relation(self.lon_relations[i][k], self.lat_relations[i].get(k, None)) for k, v in self.lon_relations[i].items()})
+        
         
         # refline = get_refline(ego, ego.lane)
         
@@ -134,7 +142,7 @@ class Model():
             #     # max_s.append(s + veh.LENGTH)
             #     cover_vehs.append(veh)
         l_offset = (self.target_lane_index[i][2] - ego.lane_index[2]) * 4.0
-        # print("l bounds: ", (max(min_l), min(max_l)))
+        print("l bounds: ", (l_offset-0.5, l_offset+0.5))
         # print("s bounds: ", (max(min_s), min(max_s)))
         # print("follow: ", follow_vehs)
         # print("overtake: ", overtake_vehs)

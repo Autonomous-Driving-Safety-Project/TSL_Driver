@@ -1,4 +1,4 @@
-from highway_env.road.road import RoadNetwork
+from highway_env.road.road import RoadNetwork, Road
 from highway_env.vehicle.kinematics import Vehicle
 from clingo import Function, Symbol, Number
 from typing import List
@@ -54,7 +54,7 @@ def get_lon_relation(v1, v2) -> Symbol:
     else:
         return Function("cover", [Function(get_asp_vehicle_repr(v1)), Function(get_asp_vehicle_repr(v2))])
 
-def neighbour_vehicle_to_asp(road, ego):
+def neighbour_vehicle_to_asp(road:Road, ego:Vehicle, front_distance_max=150, rear_distance_max=30):
     """将HighwayEnv的车辆转化成asp描述
        暂时只支持Highway环境
 
@@ -75,11 +75,11 @@ def neighbour_vehicle_to_asp(road, ego):
     network:RoadNetwork = road.network
     for lane_idx in network.all_side_lanes(ego.lane_index):
         preceder, follower = road.neighbour_vehicles(ego, lane_idx)
-        if preceder is not None:
+        if preceder is not None and (abs(preceder.lane_distance_to(ego, ego.lane)) < front_distance_max or preceder.lane == ego.lane):
             always.append(Function("is_vehicle", [Function(get_asp_vehicle_repr(preceder))]))
             
             vehicles.add(preceder)
-        if follower is not None:
+        if follower is not None and abs(follower.lane_distance_to(ego, ego.lane)) < rear_distance_max:
             always.append(Function("is_vehicle", [Function(get_asp_vehicle_repr(follower))]))
             vehicles.add(follower)
     vehicles = list(vehicles)
@@ -109,14 +109,14 @@ def get_distance(v1:Vehicle, v2:Vehicle, ego:Vehicle):
         # ego_sd = rss_safe_distance(ego, v1)
         if dis < v1.LENGTH:
             dis_asp = 0
-        elif dis <  v1.LENGTH + vr_sd:
-            dis_asp = 1
+        elif dis >=  v1.LENGTH + vr_sd:
+            dis_asp = 2
         # elif dis < v1.LENGTH + ego.LENGTH + vr_sd:
         #     dis_asp = 2
         # elif dis < v1.LENGTH + ego.LENGTH + vr_sd + ego_sd:
         #     dis_asp = 3
         else:
-            dis_asp = 2
+            dis_asp = 1
         return Function("distance", [Function(get_asp_vehicle_repr(v1)), Function(get_asp_vehicle_repr(v2)), Number(dis_asp)])
     else:
         # v1在v2后面
@@ -126,14 +126,14 @@ def get_distance(v1:Vehicle, v2:Vehicle, ego:Vehicle):
         # ego_sd = rss_safe_distance(ego, v2)
         if dis < v2.LENGTH:
             dis_asp = 0
-        elif dis <  v2.LENGTH + vr_sd:
-            dis_asp = 1
+        elif dis >=  v2.LENGTH + vr_sd:
+            dis_asp = 2
         # elif dis < v2.LENGTH + ego.LENGTH + vr_sd:
         #     dis_asp = 2
         # elif dis < v2.LENGTH + ego.LENGTH + vr_sd + ego_sd:
         #     dis_asp = 3
         else:
-            dis_asp = 2
+            dis_asp = 1
         return Function("distance", [Function(get_asp_vehicle_repr(v2)), Function(get_asp_vehicle_repr(v1)), Number(dis_asp)])
 
 def distance_asp_to_range(dis_asp:int, vf:Vehicle, vr:Vehicle, ego:Vehicle):
